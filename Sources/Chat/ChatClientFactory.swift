@@ -2,7 +2,7 @@ import Foundation
 
 public struct ChatClientFactory {
 
-    static func create(keyserverUrl: String, relayClient: RelayClient, networkingInteractor: NetworkingInteractor, syncClient: SyncClient) -> ChatClient {
+    static func create(keyserverUrl: String, relayClient: RelayClient, networkingInteractor: NetworkingInteractor, syncClient: SyncClient, historyClient: HistoryClient) -> ChatClient {
         let keychain = KeychainStorage(serviceIdentifier: "com.walletconnect.sdk")
         let keyserverURL = URL(string: keyserverUrl)!
         return ChatClientFactory.create(
@@ -12,7 +12,8 @@ public struct ChatClientFactory {
             keychain: keychain,
             logger: ConsoleLogger(loggingLevel: .debug),
             storage: UserDefaults.standard,
-            syncClient: syncClient
+            syncClient: syncClient,
+            historyClient: historyClient
         )
     }
 
@@ -23,11 +24,11 @@ public struct ChatClientFactory {
         keychain: KeychainStorageProtocol,
         logger: ConsoleLogging,
         storage: KeyValueStorage,
-        syncClient: SyncClient
+        syncClient: SyncClient,
+        historyClient: HistoryClient
     ) -> ChatClient {
-        let historyClient = HistoryClientFactory.create(keychain: keychain)
         let kms = KeyManagementService(keychain: keychain)
-        let serializer = Serializer(kms: kms)
+        let serializer = Serializer(kms: kms, logger: logger)
         let historyService = HistoryService(historyClient: historyClient, seiralizer: serializer)
         let messageStore = KeyedDatabase<Message>(storage: storage, identifier: ChatStorageIdentifiers.messages.rawValue)
         let receivedInviteStore = KeyedDatabase<ReceivedInvite>(storage: storage, identifier: ChatStorageIdentifiers.receivedInvites.rawValue)

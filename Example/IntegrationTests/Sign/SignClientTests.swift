@@ -12,18 +12,17 @@ final class SignClientTests: XCTestCase {
     var wallet: ClientDelegate!
 
     static private func makeClientDelegate(name: String) -> ClientDelegate {
-        let logger = ConsoleLogger(suffix: name, loggingLevel: .debug)
+        let logger = ConsoleLogger(prefix: name, loggingLevel: .debug)
         let keychain = KeychainStorageMock()
-        let relayClient = RelayClient(
+        let keyValueStorage = RuntimeKeyValueStorage()
+        let relayClient = RelayClientFactory.create(
             relayHost: InputConfig.relayHost,
             projectId: InputConfig.projectId,
-            keyValueStorage: RuntimeKeyValueStorage(),
+            keyValueStorage: keyValueStorage,
             keychainStorage: keychain,
             socketFactory: DefaultSocketFactory(),
-            socketConnectionType: .automatic,
             logger: logger
         )
-        let keyValueStorage = RuntimeKeyValueStorage()
 
         let networkingClient = NetworkingClientFactory.create(
             relayClient: relayClient,
@@ -434,7 +433,7 @@ final class SignClientTests: XCTestCase {
         let sessionProposal = Session.Proposal(
             id: "",
             pairingTopic: "",
-            proposer: AppMetadata(name: "", description: "", url: "", icons: []),
+            proposer: AppMetadata.stub(),
             requiredNamespaces: requiredNamespaces,
             optionalNamespaces: optionalNamespaces,
             sessionProperties: nil,

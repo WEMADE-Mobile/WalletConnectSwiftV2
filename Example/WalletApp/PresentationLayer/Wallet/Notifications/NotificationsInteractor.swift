@@ -1,22 +1,41 @@
-import WalletConnectPush
+import WalletConnectNotify
 import Combine
 
 final class NotificationsInteractor {
 
-    var subscriptionsPublisher: AnyPublisher<[PushSubscription], Never> {
-        return Push.wallet.subscriptionsPublisher
+    var subscriptionsPublisher: AnyPublisher<[NotifySubscription], Never> {
+        return Notify.instance.subscriptionsPublisher
     }
 
-    func getSubscriptions() -> [PushSubscription] {
-        let subs = Push.wallet.getActiveSubscriptions()
+    private let importAccount: ImportAccount
+
+    init(importAccount: ImportAccount) {
+        self.importAccount = importAccount
+    }
+
+    func getSubscriptions() -> [NotifySubscription] {
+        let subs = Notify.instance.getActiveSubscriptions()
         return subs
     }
 
-    func removeSubscription(_ subscription: PushSubscription) async {
+    func getListings() async throws -> [Listing] {
+        let service = ListingsNetworkService()
+        return try await service.getListings()
+    }
+
+    func removeSubscription(_ subscription: NotifySubscription) async {
         do {
-            try await Push.wallet.deleteSubscription(topic: subscription.topic)
+            try await Notify.instance.deleteSubscription(topic: subscription.topic)
         } catch {
             print(error)
         }
+    }
+
+    func subscribe(domain: String) async throws {
+        try await Notify.instance.subscribe(appDomain: domain, account: importAccount.account)
+    }
+
+    func unsubscribe(topic: String) async throws {
+        try await Notify.instance.deleteSubscription(topic: topic)
     }
 }

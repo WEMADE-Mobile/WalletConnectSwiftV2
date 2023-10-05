@@ -2,7 +2,12 @@ import Foundation
 import HTTPClient
 
 enum ExplorerAPI: HTTPService {
-    case getListings(projectId: String, metadata: AppMetadata)
+    case getListings(
+        projectId: String,
+        metadata: AppMetadata,
+        recommendedIds: [String],
+        excludedIds: [String]
+    )
 
     var path: String {
         switch self {
@@ -22,10 +27,17 @@ enum ExplorerAPI: HTTPService {
 
     var queryParameters: [String: String]? {
         switch self {
-        case let .getListings(projectId, _):
+        case let .getListings(projectId, _, recommendedIds, excludedIds):
             return [
                 "projectId": projectId,
+                "recommendedIds": recommendedIds.joined(separator: ","),
+                "excludedIds": excludedIds.joined(separator: ","),
+                "sdkType": "wcm",
+                "sdkVersion": EnvironmentInfo.sdkName,
             ]
+            .compactMapValues { value in
+                value.isEmpty ? nil : value
+            }
         }
     }
 
@@ -34,21 +46,11 @@ enum ExplorerAPI: HTTPService {
     }
 
     var additionalHeaderFields: [String: String]? {
-        
         switch self {
-        case let .getListings(_, metadata):
+        case let .getListings(_, metadata, _, _):
             return [
-                "User-Agent": ExplorerAPI.userAgent,
-                "referer": metadata.name
+                "Referer": metadata.name
             ]
         }
-    }
-    
-    private static var protocolName: String {
-        "w3m-ios-1.0.0"
-    }
-    
-    static var userAgent: String {
-        "\(protocolName)/\(EnvironmentInfo.sdkName)/\(EnvironmentInfo.operatingSystem)"
     }
 }

@@ -56,6 +56,12 @@
          <TestPlanReference
             reference = "container:SmokeTests.xctestplan">
          </TestPlanReference>
+         <TestPlanReference
+            reference = "container:../NotifyTests.xctestplan">
+         </TestPlanReference>
+         <TestPlanReference
+            reference = "container:../XPlatformProtocolTests.xctestplan">
+         </TestPlanReference>
       </TestPlans>
       <Testables>
          <TestableReference

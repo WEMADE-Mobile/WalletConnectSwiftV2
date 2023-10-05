@@ -15,8 +15,8 @@
         "repositoryURL": "https://github.com/krzyzanowskim/CryptoSwift.git",
         "state": {
           "branch": null,
-          "revision": "32f641cf24fc7abc1c591a2025e9f2f572648b0f",
-          "version": "1.7.2"
+          "revision": "db51c407d3be4a051484a141bf0bff36c43d3b1e",
+          "version": "1.8.0"
         }
       },
       {
@@ -25,6 +25,15 @@
         "state": {
           "branch": "develop",
           "revision": "748a85b1dfe9a2fa592bd9266c5a926e4e1d3f44",
+          "version": null
+        }
+      },
+      {
+        "package": "Mixpanel",
+        "repositoryURL": "https://github.com/mixpanel/mixpanel-swift",
+        "state": {
+          "branch": "master",
+          "revision": "1ce27d937009d5ecce74dad97d69898ffea49c75",
           "version": null
         }
       },
@@ -56,6 +65,15 @@
         }
       },
       {
+        "package": "Sentry",
+        "repositoryURL": "https://github.com/getsentry/sentry-cocoa.git",
+        "state": {
+          "branch": null,
+          "revision": "14aa6e47b03b820fd2b338728637570b9e969994",
+          "version": "8.12.0"
+        }
+      },
+      {
         "package": "SolanaSwift",
         "repositoryURL": "https://github.com/flypaper0/solana-swift",
         "state": {
@@ -71,6 +89,24 @@
           "branch": null,
           "revision": "a063fda2b8145a231953c20e7a646be254365396",
           "version": "3.1.2"
+        }
+      },
+      {
+        "package": "SwiftDocCPlugin",
+        "repositoryURL": "https://github.com/apple/swift-docc-plugin",
+        "state": {
+          "branch": null,
+          "revision": "26ac5758409154cc448d7ab82389c520fa8a8247",
+          "version": "1.3.0"
+        }
+      },
+      {
+        "package": "SymbolKit",
+        "repositoryURL": "https://github.com/apple/swift-docc-symbolkit",
+        "state": {
+          "branch": null,
+          "revision": "b45d1f2ed151d057b54504d653e0da5552844e34",
+          "version": "1.0.0"
         }
       },
       {

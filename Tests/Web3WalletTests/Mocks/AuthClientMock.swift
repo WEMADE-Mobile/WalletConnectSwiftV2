@@ -22,6 +22,7 @@ final class AuthClientMock: AuthClientProtocol {
         
         return AuthRequest(
             id: .left(""),
+            topic: "",
             payload: AuthPayload(requestParams: requestParams, iat: "")
         )
     }
@@ -42,7 +43,7 @@ final class AuthClientMock: AuthClientProtocol {
         rejectCalled = true
     }
     
-    func getPendingRequests() throws -> [AuthRequest] {
-        return [authRequest]
+    func getPendingRequests() throws -> [(AuthRequest, VerifyContext?)] {
+        return [(authRequest, nil)]
     }
 }

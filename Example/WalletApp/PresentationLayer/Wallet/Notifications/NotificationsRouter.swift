@@ -1,5 +1,5 @@
 import UIKit
-import WalletConnectPush
+import WalletConnectNotify
 
 final class NotificationsRouter {
 
@@ -11,8 +11,8 @@ final class NotificationsRouter {
         self.app = app
     }
 
-    func presentNotifications(subscription: WalletConnectPush.PushSubscription) {
-        PushMessagesModule.create(app: app, subscription: subscription)
+    func presentNotifications(subscription: NotifySubscription) {
+        SubscriptionModule.create(app: app, subscription: subscription)
             .push(from: viewController)
     }
 }

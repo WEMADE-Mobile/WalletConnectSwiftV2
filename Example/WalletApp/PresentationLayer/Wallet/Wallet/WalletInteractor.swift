@@ -1,17 +1,9 @@
 import Combine
 
 import Web3Wallet
-import WalletConnectPush
+import WalletConnectNotify
 
 final class WalletInteractor {
-    var requestPublisher: AnyPublisher<(request: AuthRequest, context: VerifyContext?), Never> {
-        return Web3Wallet.instance.authRequestPublisher
-    }
-
-    var sessionRequestPublisher: AnyPublisher<(request: Request, context: VerifyContext?), Never> {
-        return Web3Wallet.instance.sessionRequestPublisher
-    }
-
     var sessionsPublisher: AnyPublisher<[Session], Never> {
         return Web3Wallet.instance.sessionsPublisher
     }
@@ -26,5 +18,13 @@ final class WalletInteractor {
     
     func disconnectSession(session: Session) async throws {
         try await Web3Wallet.instance.disconnect(topic: session.topic)
+    }
+    
+    func getPendingProposals() -> [(proposal: Session.Proposal, context: VerifyContext?)] {
+        Web3Wallet.instance.getPendingProposals()
+    }
+    
+    func getPendingRequests() -> [(request: Request, context: VerifyContext?)] {
+        Web3Wallet.instance.getPendingRequests()
     }
 }

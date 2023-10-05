@@ -16,6 +16,26 @@
         "value" : "$(RELAY_HOST)"
       },
       {
+        "key" : "GM_DAPP_HOST",
+        "value" : "$(GM_DAPP_HOST)"
+      },
+      {
+        "key" : "JS_CLIENT_API_HOST",
+        "value" : "$(JS_CLIENT_API_HOST)"
+      },
+      {
+        "key" : "GM_DAPP_PROJECT_SECRET",
+        "value" : "$(GM_DAPP_PROJECT_SECRET)"
+      },
+      {
+        "key" : "GM_DAPP_PROJECT_ID",
+        "value" : "$(GM_DAPP_PROJECT_ID)"
+      },
+      {
+        "key" : "CAST_HOST",
+        "value" : "$(CAST_HOST)"
+      },
+      {
         "key" : "PROJECT_ID",
         "value" : "$(PROJECT_ID)"
       }
@@ -28,10 +48,13 @@
   },
   "testTargets" : [
     {
+      "parallelizable" : true,
       "skippedTests" : [
         "AuthTests\/testEIP1271RespondSuccess()",
         "ChatTests",
-        "ENSResolverTests"
+        "ENSResolverTests",
+        "SyncDerivationServiceTests",
+        "SyncTests"
       ],
       "target" : {
         "containerPath" : "container:ExampleApp.xcodeproj",

@@ -24,13 +24,13 @@ final class HistoryTests: XCTestCase {
     }
 
     private func makeRelayClient(prefix: String, keychain: KeychainStorageProtocol) -> RelayClient {
-        return RelayClient(
+        return RelayClientFactory.create(
             relayHost: InputConfig.relayHost,
             projectId: InputConfig.projectId,
             keyValueStorage: RuntimeKeyValueStorage(),
             keychainStorage: keychain,
             socketFactory: DefaultSocketFactory(),
-            logger: ConsoleLogger(suffix: prefix + " [Relay]", loggingLevel: .debug))
+            logger: ConsoleLogger(prefix: prefix + " [Relay]", loggingLevel: .debug))
     }
 
     private func makeHistoryClient(keychain: KeychainStorageProtocol) -> HistoryNetworkService {

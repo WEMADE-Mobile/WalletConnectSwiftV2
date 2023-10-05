@@ -20,19 +20,20 @@ extension Color {
         self.init(asset.rawValue, bundle: .module)
     }
     
-    static let foreground1 = Color(.foreground1)
-    static let foreground2 = Color(.foreground2)
-    static let foreground3 = Color(.foreground3)
-    static let foregroundInverse = Color(.foregroundInverse)
-    static let background1 = Color(.background1)
-    static let background2 = Color(.background2)
-    static let background3 = Color(.background3)
-    static let negative = Color(.negative)
-    static let thickOverlay = Color(.thickOverlay)
-    static let thinOverlay = Color(.thinOverlay)
-    static let accent = Color(.accent)
+    static let foreground1 = Color(AssetColor.foreground1)
+    static let foreground2 = Color(AssetColor.foreground2)
+    static let foreground3 = Color(AssetColor.foreground3)
+    static let foregroundInverse = Color(AssetColor.foregroundInverse)
+    static let background1 = Color(AssetColor.background1)
+    static let background2 = Color(AssetColor.background2)
+    static let background3 = Color(AssetColor.background3)
+    static let negative = Color(AssetColor.negative)
+    static let thickOverlay = Color(AssetColor.thickOverlay)
+    static let thinOverlay = Color(AssetColor.thinOverlay)
+    static var accent = Color(AssetColor.accent)
 }
 
+#if canImport(UIKit)
 extension UIColor {
  
     convenience init(_ asset: AssetColor) {
@@ -42,16 +43,39 @@ extension UIColor {
 
 extension AssetColor {
     
-    var swituiColor: Color {
-        Color(self)
-    }
-    
     var uiColor: UIColor {
         UIColor(self)
     }
 }
 
-@available(iOS 15.0, *)
+#elseif canImport(AppKit)
+
+
+extension NSColor {
+ 
+    convenience init(_ asset: AssetColor) {
+        self.init(named: asset.rawValue)!
+    }
+}
+
+extension AssetColor {
+    
+    var uiColor: NSColor {
+        NSColor(self)
+    }
+}
+
+#endif
+
+extension AssetColor {
+    
+    var swituiColor: Color {
+        Color(self)
+    }
+}
+
+#if DEBUG
+@available(iOS 15.0, tvOS 14.0, *)
 struct Color_Previews: PreviewProvider {
     static var allColors: [AssetColor] {
         [
@@ -93,3 +117,4 @@ struct Color_Previews: PreviewProvider {
         .previewLayout(.sizeThatFits)
     }
 }
+#endif

@@ -8,7 +8,9 @@ class WalletRequestSubscriber {
     private var publishers = [AnyCancellable]()
     private let walletErrorResponder: WalletErrorResponder
     private let pairingRegisterer: PairingRegisterer
-    private let verifyClient: VerifyClient?
+    private let verifyClient: VerifyClientProtocol
+    private let verifyContextStore: CodableStore<VerifyContext>
+
     var onRequest: (((request: AuthRequest, context: VerifyContext?)) -> Void)?
     
     init(
@@ -17,7 +19,8 @@ class WalletRequestSubscriber {
         kms: KeyManagementServiceProtocol,
         walletErrorResponder: WalletErrorResponder,
         pairingRegisterer: PairingRegisterer,
-        verifyClient: VerifyClient?
+        verifyClient: VerifyClientProtocol,
+        verifyContextStore: CodableStore<VerifyContext>
     ) {
         self.networkingInteractor = networkingInteractor
         self.logger = logger
@@ -25,6 +28,7 @@ class WalletRequestSubscriber {
         self.walletErrorResponder = walletErrorResponder
         self.pairingRegisterer = pairingRegisterer
         self.verifyClient = verifyClient
+        self.verifyContextStore = verifyContextStore
         subscribeForRequest()
     }
     
@@ -33,25 +37,23 @@ class WalletRequestSubscriber {
             .sink { [unowned self] (payload: RequestSubscriptionPayload<AuthRequestParams>) in
                 logger.debug("WalletRequestSubscriber: Received request")
                 
-                pairingRegisterer.activate(
-                    pairingTopic: payload.topic,
-                    peerMetadata: payload.request.requester.metadata
-                )
+                pairingRegisterer.setReceived(pairingTopic: payload.topic)
                 
-                let request = AuthRequest(id: payload.id, payload: payload.request.payloadParams)
+                let request = AuthRequest(id: payload.id, topic: payload.topic, payload: payload.request.payloadParams)
                 
-                guard let verifyClient else {
-                    onRequest?((request, nil))
-                    return
-                }
                 Task(priority: .high) {
                     let assertionId = payload.decryptedPayload.sha256().toHexString()
-                    let origin = try? await verifyClient.verifyOrigin(assertionId: assertionId)
-                    let verifyContext = await verifyClient.createVerifyContext(
-                        origin: origin,
-                        domain: payload.request.payloadParams.domain
-                    )
-                    onRequest?((request, verifyContext))
+                    do {
+                        let response = try await verifyClient.verifyOrigin(assertionId: assertionId)
+                        let verifyContext = verifyClient.createVerifyContext(origin: response.origin, domain: payload.request.payloadParams.domain, isScam: response.isScam)
+                        verifyContextStore.set(verifyContext, forKey: request.id.string)
+                        onRequest?((request, verifyContext))
+                    } catch {
+                        let verifyContext = verifyClient.createVerifyContext(origin: nil, domain: payload.request.payloadParams.domain, isScam: nil)
+                        verifyContextStore.set(verifyContext, forKey: request.id.string)
+                        onRequest?((request, verifyContext))
+                        return
+                    }
                 }
             }.store(in: &publishers)
     }

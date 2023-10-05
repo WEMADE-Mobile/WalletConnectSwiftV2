@@ -4,6 +4,7 @@ import XCTest
 import WalletConnectUtils
 @testable import WalletConnectKMS
 @testable import WalletConnectSync
+@testable import WalletConnectHistory
 import WalletConnectRelay
 import Combine
 import Web3
@@ -37,20 +38,27 @@ final class ChatTests: XCTestCase {
         invitee1 = makeClient(prefix: "🦖 Invitee", account: inviteeAccount)
         inviter1 = makeClient(prefix: "🍄 Inviter", account: inviterAccount)
 
-        try await invitee1.register(account: inviteeAccount) { message in
+        try await invitee1.register(account: inviteeAccount, domain: "") { message in
             return self.sign(message, privateKey: self.privateKey1)
         }
-        try await inviter1.register(account: inviterAccount) { message in
+        try await inviter1.register(account: inviterAccount, domain: "") { message in
             return self.sign(message, privateKey: self.privateKey2)
         }
     }
 
     func makeClient(prefix: String, account: Account) -> ChatClient {
         let keyserverURL = URL(string: "https://keys.walletconnect.com")!
-        let logger = ConsoleLogger(suffix: prefix, loggingLevel: .debug)
-        let keychain = KeychainStorageMock()
-        let relayClient = RelayClient(relayHost: InputConfig.relayHost, projectId: InputConfig.projectId, keychainStorage: keychain, socketFactory: DefaultSocketFactory(), logger: logger)
+        let logger = ConsoleLogger(prefix: prefix, loggingLevel: .debug)
         let keyValueStorage = RuntimeKeyValueStorage()
+        let keychain = KeychainStorageMock()
+        let relayClient = RelayClientFactory.create(
+            relayHost: InputConfig.relayHost,
+            projectId: InputConfig.projectId,
+            keyValueStorage: keyValueStorage,
+            keychainStorage: keychain,
+            socketFactory: DefaultSocketFactory(),
+            logger: logger)
+
         let networkingInteractor = NetworkingClientFactory.create(
             relayClient: relayClient,
             logger: logger,
@@ -63,10 +71,16 @@ final class ChatTests: XCTestCase {
             keychain: keychain
         )
 
+        let historyClient = HistoryClientFactory.create(
+            historyUrl: "https://history.walletconnect.com",
+            relayUrl: "wss://relay.walletconnect.com",
+            keychain: keychain
+        )
+
         let clientId = try! networkingInteractor.getClientId()
         logger.debug("My client id is: \(clientId)")
 
-        return ChatClientFactory.create(keyserverURL: keyserverURL, relayClient: relayClient, networkingInteractor: networkingInteractor, keychain:  keychain, logger: logger, storage: keyValueStorage, syncClient: syncClient)
+        return ChatClientFactory.create(keyserverURL: keyserverURL, relayClient: relayClient, networkingInteractor: networkingInteractor, keychain:  keychain, logger: logger, storage: keyValueStorage, syncClient: syncClient, historyClient: historyClient)
     }
 
     func testInvite() async throws {

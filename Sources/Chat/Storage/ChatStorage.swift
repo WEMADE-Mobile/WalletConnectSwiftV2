@@ -102,10 +102,15 @@ final class ChatStorage {
     // MARK: - Configuration
 
     func initializeStores(for account: Account) async throws {
-        try await sentInviteStore.initialize(for: account)
-        try await threadStore.initialize(for: account)
-        try await inviteKeyStore.initialize(for: account)
-        try await receivedInviteStatusStore.initialize(for: account)
+        try await sentInviteStore.create(for: account)
+        try await threadStore.create(for: account)
+        try await inviteKeyStore.create(for: account)
+        try await receivedInviteStatusStore.create(for: account)
+
+        try await sentInviteStore.subscribe(for: account)
+        try await threadStore.subscribe(for: account)
+        try await inviteKeyStore.subscribe(for: account)
+        try await receivedInviteStatusStore.subscribe(for: account)
     }
 
     func initializeDelegates() async throws {
@@ -132,9 +137,9 @@ final class ChatStorage {
             receivedInvitesPublisherSubject.send(getReceivedInvites(account: account))
         }
 
-        try sentInviteStore.setupSubscriptions(account: account)
-        try threadStore.setupSubscriptions(account: account)
-        try inviteKeyStore.setupSubscriptions(account: account)
+        try sentInviteStore.setupDatabaseSubscriptions(account: account)
+        try threadStore.setupDatabaseSubscriptions(account: account)
+        try inviteKeyStore.setupDatabaseSubscriptions(account: account)
     }
 
     // MARK: - Invites
@@ -280,37 +285,37 @@ private extension ChatStorage {
     func setupSyncSubscriptions() {
         sentInviteStore.syncUpdatePublisher.sink { [unowned self] topic, account, update in
             switch update {
-            case .set(let object):
+            case .set(let object), .update(let object):
                 self.sentInviteStoreDelegate.onUpdate(object)
-            case .delete(let id):
-                self.sentInviteStoreDelegate.onDelete(id)
+            case .delete(let object):
+                self.sentInviteStoreDelegate.onDelete(object)
             }
         }.store(in: &publishers)
 
         threadStore.syncUpdatePublisher.sink { [unowned self] topic, account, update in
             switch update {
-            case .set(let object):
+            case .set(let object), .update(let object):
                 self.threadStoreDelegate.onUpdate(object, storage: self)
-            case .delete(let id):
-                self.threadStoreDelegate.onDelete(id)
+            case .delete(let object):
+                self.threadStoreDelegate.onDelete(object)
             }
         }.store(in: &publishers)
 
         inviteKeyStore.syncUpdatePublisher.sink { [unowned self] topic, account, update in
             switch update {
-            case .set(let object):
+            case .set(let object), .update(let object):
                 self.inviteKeyDelegate.onUpdate(object, account: account)
-            case .delete(let id):
-                self.inviteKeyDelegate.onDelete(id)
+            case .delete(let object):
+                self.inviteKeyDelegate.onDelete(object)
             }
         }.store(in: &publishers)
 
         receivedInviteStatusStore.syncUpdatePublisher.sink { [unowned self] topic, account, update in
             switch update {
-            case .set(let object):
+            case .set(let object), .update(let object):
                 self.receiviedInviteStatusDelegate.onUpdate(object, storage: self, account: account)
-            case .delete(let id):
-                self.receiviedInviteStatusDelegate.onDelete(id)
+            case .delete(let object):
+                self.receiviedInviteStatusDelegate.onDelete(object)
             }
         }.store(in: &publishers)
     }

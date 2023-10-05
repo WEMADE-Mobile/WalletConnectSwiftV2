@@ -1,8 +1,8 @@
 import Foundation
 import Combine
 
-
 public class NetworkingInteractor: NetworkInteracting {
+    private var tasks = Task.DisposeBag()
     private var publishers = Set<AnyCancellable>()
     private let relayClient: RelayClient
     private let serializer: Serializing
@@ -20,7 +20,17 @@ public class NetworkingInteractor: NetworkInteracting {
         responsePublisherSubject.eraseToAnyPublisher()
     }
 
+    public var logsPublisher: AnyPublisher<Log, Never> {
+        logger.logsPublisher
+            .merge(with: serializer.logsPublisher)
+            .merge(with: relayClient.logsPublisher)
+            .eraseToAnyPublisher()
+    }
+
+    public var networkConnectionStatusPublisher: AnyPublisher<NetworkConnectionStatus, Never>
     public var socketConnectionStatusPublisher: AnyPublisher<SocketConnectionStatus, Never>
+    
+    private let networkMonitor: NetworkMonitoring
 
     public init(
         relayClient: RelayClient,
@@ -33,6 +43,8 @@ public class NetworkingInteractor: NetworkInteracting {
         self.rpcHistory = rpcHistory
         self.logger = logger
         self.socketConnectionStatusPublisher = relayClient.socketConnectionStatusPublisher
+        self.networkMonitor = NetworkMonitor()
+        self.networkConnectionStatusPublisher = networkMonitor.networkConnectionStatusPublisher
         setupRelaySubscribtion()
     }
 
@@ -42,6 +54,13 @@ public class NetworkingInteractor: NetworkInteracting {
                 manageSubscription(topic, message, publishedAt)
             }.store(in: &publishers)
     }
+
+    public func setLogging(level: LoggingLevel) {
+        logger.setLogging(level: level)
+        serializer.setLogging(level: level)
+        relayClient.setLogging(level: level)
+    }
+
 
     public func subscribe(topic: String) async throws {
         try await relayClient.subscribe(topic: topic)
@@ -66,14 +85,56 @@ public class NetworkingInteractor: NetworkInteracting {
         rpcHistory.deleteAll(forTopics: topics)
     }
 
+    public func subscribeOnRequest<RequestParams: Codable>(
+        protocolMethod: ProtocolMethod,
+        requestOfType: RequestParams.Type,
+        errorHandler: ErrorHandler?,
+        subscription: @escaping (RequestSubscriptionPayload<RequestParams>) async throws -> Void
+    ) {
+        requestSubscription(on: protocolMethod)
+            .sink { [unowned self] (payload: RequestSubscriptionPayload<RequestParams>) in
+                Task(priority: .high) {
+                    do {
+                        try await subscription(payload)
+                    } catch {
+                        errorHandler?.handle(error: error)
+                    }
+                }.store(in: &tasks)
+            }.store(in: &publishers)
+    }
+
+    public func subscribeOnResponse<Request: Codable, Response: Codable>(
+        protocolMethod: ProtocolMethod,
+        requestOfType: Request.Type,
+        responseOfType: Response.Type,
+        errorHandler: ErrorHandler?,
+        subscription: @escaping (ResponseSubscriptionPayload<Request, Response>) async throws -> Void
+    ) {
+        responseSubscription(on: protocolMethod)
+            .sink { [unowned self] (payload: ResponseSubscriptionPayload<Request, Response>) in
+                Task(priority: .high) {
+                    do {
+                        try await subscription(payload)
+                    } catch {
+                        errorHandler?.handle(error: error)
+                    }
+                }.store(in: &tasks)
+            }.store(in: &publishers)
+    }
+
     public func requestSubscription<RequestParams: Codable>(on request: ProtocolMethod) -> AnyPublisher<RequestSubscriptionPayload<RequestParams>, Never> {
         return requestPublisher
             .filter { rpcRequest in
                 return rpcRequest.request.method == request.method
             }
-            .compactMap { topic, rpcRequest, decryptedPayload, publishedAt, derivedTopic in
-                guard let id = rpcRequest.id, let request = try? rpcRequest.params?.get(RequestParams.self) else { return nil }
-                return RequestSubscriptionPayload(id: id, topic: topic, request: request, decryptedPayload: decryptedPayload, publishedAt: publishedAt, derivedTopic: derivedTopic)
+            .compactMap { [weak self] topic, rpcRequest, decryptedPayload, publishedAt, derivedTopic in
+                do {
+                    guard let id = rpcRequest.id, let request = try rpcRequest.params?.get(RequestParams.self) else { return nil }
+                    return RequestSubscriptionPayload(id: id, topic: topic, request: request, decryptedPayload: decryptedPayload, publishedAt: publishedAt, derivedTopic: derivedTopic)
+                } catch {
+                    self?.logger.debug("Networking Interactor - \(error)")
+                }
+                return nil
             }
             .eraseToAnyPublisher()
     }
@@ -138,6 +199,10 @@ public class NetworkingInteractor: NetworkInteracting {
         } else {
             logger.debug("Networking Interactor - Received unknown object type from networking relay")
         }
+    }
+    
+    public func handleHistoryRequest(topic: String, request: RPCRequest) {
+        requestPublisherSubject.send((topic, request, Data(), Date(), nil))
     }
 
     private func handleRequest(topic: String, request: RPCRequest, decryptedPayload: Data, publishedAt: Date, derivedTopic: String?) {

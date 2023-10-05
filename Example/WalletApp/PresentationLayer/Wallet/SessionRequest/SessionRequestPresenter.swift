@@ -6,12 +6,16 @@ import Web3Wallet
 final class SessionRequestPresenter: ObservableObject {
     private let interactor: SessionRequestInteractor
     private let router: SessionRequestRouter
+    private let importAccount: ImportAccount
     
     let sessionRequest: Request
-    let verified: Bool?
+    let session: Session?
+    let validationStatus: VerifyContext.ValidationStatus?
     
     var message: String {
-        return String(describing: sessionRequest.params.value)
+        let message = try? sessionRequest.params.get([String].self)
+        let decryptedMessage = message.map { String(data: Data(hex: $0.first ?? ""), encoding: .utf8) }
+        return (decryptedMessage ?? "Failed to decrypt") ?? "Failed to decrypt"
     }
     
     @Published var showError = false
@@ -23,19 +27,22 @@ final class SessionRequestPresenter: ObservableObject {
         interactor: SessionRequestInteractor,
         router: SessionRequestRouter,
         sessionRequest: Request,
+        importAccount: ImportAccount,
         context: VerifyContext?
     ) {
         defer { setupInitialState() }
         self.interactor = interactor
         self.router = router
         self.sessionRequest = sessionRequest
-        self.verified = (context?.validation == .valid) ? true : (context?.validation == .unknown ? nil : false)
+        self.session = interactor.getSession(topic: sessionRequest.topic)
+        self.importAccount = importAccount
+        self.validationStatus = context?.validation
     }
 
     @MainActor
     func onApprove() async throws {
         do {
-            try await interactor.approve(sessionRequest: sessionRequest)
+            try await interactor.approve(sessionRequest: sessionRequest, importAccount: importAccount)
             router.dismiss()
         } catch {
             errorMessage = error.localizedDescription
@@ -52,9 +59,7 @@ final class SessionRequestPresenter: ObservableObject {
 
 // MARK: - Private functions
 private extension SessionRequestPresenter {
-    func setupInitialState() {
-
-    }
+    func setupInitialState() {}
 }
 
 // MARK: - SceneViewModel

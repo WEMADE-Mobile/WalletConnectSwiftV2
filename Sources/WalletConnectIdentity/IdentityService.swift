@@ -26,6 +26,9 @@ actor IdentityService {
     }
 
     func registerIdentity(account: Account,
+        domain: String,
+        statement: String,
+        resources: [String],
         onSign: SigningCallback
     ) async throws -> String {
 
@@ -34,7 +37,8 @@ actor IdentityService {
         }
 
         let identityKey = SigningPrivateKey()
-        let cacao = try await makeCacao(DIDKey: identityKey.publicKey.did, account: account, onSign: onSign)
+        let audience = identityKey.publicKey.did
+        let cacao = try await makeCacao(account: account, domain: domain, statement: statement, resources: resources, audience: audience, onSign: onSign)
         try await networkService.registerIdentity(cacao: cacao)
 
         return try storage.saveIdentityKey(identityKey, for: account).publicKey.hexRepresentation
@@ -48,7 +52,7 @@ actor IdentityService {
 
         let inviteKey = try kms.createX25519KeyPair()
         let invitePublicKey = DIDKey(rawData: inviteKey.rawRepresentation)
-        let idAuth = try makeIDAuth(account: account, issuer: invitePublicKey, kind: .registerInvite)
+        let idAuth = try makeIDAuth(account: account, issuer: invitePublicKey, claims: RegisterInviteClaims.self)
         try await networkService.registerInvite(idAuth: idAuth)
 
         return try storage.saveInviteKey(inviteKey, for: account)
@@ -57,7 +61,7 @@ actor IdentityService {
     func unregister(account: Account, onSign: SigningCallback) async throws {
         let identityKey = try storage.getIdentityKey(for: account)
         let identityPublicKey = DIDKey(rawData: identityKey.publicKey.rawRepresentation)
-        let idAuth = try makeIDAuth(account: account, issuer: identityPublicKey, kind: .unregisterIdentity)
+        let idAuth = try makeIDAuth(account: account, issuer: identityPublicKey, claims: UnregisterIdentityClaims.self)
         try await networkService.removeIdentity(idAuth: idAuth)
         try storage.removeIdentityKey(for: account)
     }
@@ -65,7 +69,7 @@ actor IdentityService {
     func goPrivate(account: Account) async throws -> AgreementPublicKey {
         let inviteKey = try storage.getInviteKey(for: account)
         let invitePublicKey = DIDKey(rawData: inviteKey.rawRepresentation)
-        let idAuth = try makeIDAuth(account: account, issuer: invitePublicKey, kind: .unregisterInvite)
+        let idAuth = try makeIDAuth(account: account, issuer: invitePublicKey, claims: UnregisterInviteClaims.self)
         try await networkService.removeInvite(idAuth: idAuth)
         try storage.removeInviteKey(for: account)
 
@@ -85,22 +89,26 @@ actor IdentityService {
 
 private extension IdentityService {
 
-    func makeCacao(
-        DIDKey: String,
-        account: Account,
+    func makeCacao(account: Account,
+        domain: String,
+        statement: String,
+        resources: [String],
+        audience: String,
         onSign: SigningCallback
     ) async throws -> Cacao {
 
         let cacaoHeader = CacaoHeader(t: "eip4361")
         let cacaoPayload = CacaoPayload(
             iss: account.did,
-            domain: keyserverURL.host!,
-            aud: getAudience(),
+            domain: domain,
+            aud: audience,
             version: getVersion(),
             nonce: getNonce(),
             iat: iatProvader.iat,
-            nbf: nil, exp: nil, statement: "statement", requestId: nil,
-            resources: [DIDKey]
+            nbf: nil, exp: nil,
+            statement: statement,
+            requestId: nil,
+            resources: resources
         )
 
         let result = await onSign(try messageFormatter.formatMessage(from: cacaoPayload))
@@ -113,11 +121,10 @@ private extension IdentityService {
         }
     }
 
-    func makeIDAuth(account: Account, issuer: DIDKey, kind: IDAuthPayload.Kind) throws -> String {
+    func makeIDAuth<Claims: IDAuthClaims>(account: Account, issuer: DIDKey, claims: Claims.Type) throws -> String {
         let identityKey = try storage.getIdentityKey(for: account)
 
-        let payload = IDAuthPayload(
-            kind: kind,
+        let payload = IDAuthPayload<Claims>(
             keyserver: keyserverURL,
             account: account,
             invitePublicKey: issuer
@@ -132,9 +139,5 @@ private extension IdentityService {
 
     private func getVersion() -> String {
         return "1"
-    }
-
-    private func getAudience() -> String {
-        return keyserverURL.absoluteString
     }
 }

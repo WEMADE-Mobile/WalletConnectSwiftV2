@@ -3,7 +3,8 @@ import Combine
 
 public enum SyncUpdate<Object: DatabaseObject> {
     case set(object: Object)
-    case delete(id: String)
+    case delete(object: Object)
+    case update(object: Object)
 }
 
 public final class SyncStore<Object: DatabaseObject> {
@@ -39,11 +40,15 @@ public final class SyncStore<Object: DatabaseObject> {
         setupSubscriptions()
     }
 
-    public func initialize(for account: Account) async throws {
+    public func create(for account: Account) async throws {
         try await syncClient.create(account: account, store: name)
     }
 
-    public func setupSubscriptions(account: Account) throws {
+    public func subscribe(for account: Account) async throws {
+        try await syncClient.subscribe(account: account, store: name)
+    }
+
+    public func setupDatabaseSubscriptions(account: Account) throws {
         let record = try indexStore.getRecord(account: account, name: name)
 
         objectStore.onUpdate = { [unowned self] in
@@ -58,6 +63,10 @@ public final class SyncStore<Object: DatabaseObject> {
 
     public func getAll() -> [Object] {
         return objectStore.getAll()
+    }
+
+    public func get(for id: String) -> Object? {
+        return getAll().first(where: { $0.databaseId == id })
     }
 
     public func set(object: Object, for account: Account) async throws {
@@ -75,6 +84,25 @@ public final class SyncStore<Object: DatabaseObject> {
             try await syncClient.delete(account: account, store: record.store, key: id)
         }
     }
+
+    public func delete(id: String) async throws {
+        guard let result = objectStore.find(id: id) else {
+            return
+        }
+        let record = try indexStore.getRecord(topic: result.key)
+        try await delete(id: id, for: record.account)
+    }
+
+    public func getStoreTopic(account: Account) throws -> String {
+        let record = try indexStore.getRecord(account: account, name: name)
+        return record.topic
+    }
+
+    public func replaceInStore(objects: [Object], for account: Account) throws {
+        let record = try indexStore.getRecord(account: account, name: name)
+        objectStore.deleteAll(for: record.topic)
+        objectStore.set(elements: objects, for: record.topic)
+    }
 }
 
 private extension SyncStore {
@@ -89,12 +117,14 @@ private extension SyncStore {
             switch update {
             case .set(let set):
                 let object = try! JSONDecoder().decode(Object.self, from: Data(set.value.utf8))
+                let exists = objectStore.exists(for: record.topic, id: object.databaseId)
                 if try! setInStore(object: object, for: record.account) {
-                    syncUpdateSubject.send((topic, record.account, .set(object: object)))
+                    let update: SyncUpdate = exists ? .update(object: object) : .set(object: object)
+                    syncUpdateSubject.send((topic, record.account, update))
                 }
             case .delete(let delete):
-                if try! deleteInStore(id: delete.key, for: record.account) {
-                    syncUpdateSubject.send((topic, record.account, .delete(id: delete.key)))
+                if let object = get(for: delete.key), try! deleteInStore(id: delete.key, for: record.account) {
+                    syncUpdateSubject.send((topic, record.account, .delete(object: object)))
                 }
             }
         }.store(in: &publishers)

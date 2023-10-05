@@ -41,16 +41,26 @@ final class RelayClientEndToEndTests: XCTestCase {
             projectId: InputConfig.projectId,
             socketAuthenticator: socketAuthenticator
         )
-        let socket = WebSocket(url: urlFactory.create())
+        let socket = WebSocket(url: urlFactory.create(fallback: false))
         let webSocketFactory = WebSocketFactoryMock(webSocket: socket)
-        let logger = ConsoleLogger(suffix: prefix, loggingLevel: .debug)
+        let logger = ConsoleLogger(prefix: prefix, loggingLevel: .debug)
         let dispatcher = Dispatcher(
             socketFactory: webSocketFactory,
             relayUrlFactory: urlFactory,
             socketConnectionType: .manual,
             logger: logger
         )
-        let relayClient = RelayClient(dispatcher: dispatcher, logger: logger, keyValueStorage: RuntimeKeyValueStorage(), clientIdStorage: clientIdStorage)
+        let keychain = KeychainStorageMock()
+        let keyValueStorage = RuntimeKeyValueStorage()
+        let relayClient = RelayClientFactory.create(
+            relayHost: InputConfig.relayHost,
+            projectId: InputConfig.projectId,
+            keyValueStorage: keyValueStorage,
+            keychainStorage: keychain,
+            socketFactory: DefaultSocketFactory(),
+            socketConnectionType: .manual,
+            logger: logger
+        )
         let clientId = try! relayClient.getClientId()
         logger.debug("My client id is: \(clientId)")
 

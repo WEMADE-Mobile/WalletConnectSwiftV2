@@ -10,10 +10,7 @@ struct AsyncImage<Content>: View where Content: View {
         init(_ url: URL?) {
             guard let url = url else { return }
             
-            var request = URLRequest(url: url)
-            request.setValue(ExplorerAPI.userAgent, forHTTPHeaderField: "User-Agent")
-            request.setValue(WalletConnectModal.config.metadata.name, forHTTPHeaderField: "Referer")
-            
+            let request = URLRequest(url: url)
             URLSession.shared.dataTaskPublisher(for: request)
                 .map(\.data)
                 .map { $0 as Data? }
@@ -50,11 +47,15 @@ struct AsyncImage<Content>: View where Content: View {
             }
         }
     }
-
+    
     private var image: Image? {
         imageLoader.data
             .flatMap {
+                #if canImport(UIKit)
                 UIImage(data: $0)
+                #elseif canImport(AppKit)
+                NSImage(data: $0)
+                #endif
             }
             .flatMap(Image.init)
     }

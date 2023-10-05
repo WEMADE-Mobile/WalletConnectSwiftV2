@@ -1,9 +1,8 @@
 import Foundation
-import WalletConnectEcho
 
 extension Push {
     struct Config {
-        let echoHost: String
+        let pushHost: String
         let environment: APNSEnvironment
     }
 }

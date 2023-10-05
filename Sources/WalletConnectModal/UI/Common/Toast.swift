@@ -1,10 +1,10 @@
 import SwiftUI
 
 struct Toast: Equatable {
-  var style: ToastStyle
-  var message: String
-  var duration: Double = 3
-  var width: Double = .infinity
+    let style: ToastStyle
+    let message: String
+    var duration: Double = 3
+    var width: Double = .infinity
 }
 
 enum ToastStyle {
@@ -73,7 +73,8 @@ struct ToastModifier: ViewModifier {
                 ZStack {
                     mainToastView()
                         .offset(y: -64)
-                }.animation(.spring(), value: toast)
+                }
+                .animation(.spring(), value: toast)
             )
             .onChangeBackported(of: toast) { _ in
                 showToast()
@@ -90,7 +91,9 @@ struct ToastModifier: ViewModifier {
                 ) {
                     dismissToast()
                 }
+                
                 Spacer()
+                    .allowsHitTesting(false)
             }
         }
     }
@@ -98,9 +101,11 @@ struct ToastModifier: ViewModifier {
     private func showToast() {
         guard let toast = toast else { return }
     
+        #if os(iOS)
         UIImpactFeedbackGenerator(style: .light)
             .impactOccurred()
-    
+        #endif
+        
         if toast.duration > 0 {
             workItem?.cancel()
       

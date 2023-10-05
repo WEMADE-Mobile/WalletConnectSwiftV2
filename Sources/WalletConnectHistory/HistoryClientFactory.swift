@@ -1,8 +1,9 @@
 import Foundation
 
-public class HistoryClientFactory {
+class HistoryClientFactory {
 
-    public static func create(keychain: KeychainStorageProtocol) -> HistoryClient {
+    static func create() -> HistoryClient {
+        let keychain = KeychainStorage(serviceIdentifier: "com.walletconnect.sdk")
         return HistoryClientFactory.create(
             historyUrl: "https://history.walletconnect.com",
             relayUrl: "wss://relay.walletconnect.com",
@@ -13,7 +14,7 @@ public class HistoryClientFactory {
     static func create(historyUrl: String, relayUrl: String, keychain: KeychainStorageProtocol) -> HistoryClient {
         let clientIdStorage = ClientIdStorage(keychain: keychain)
         let kms = KeyManagementService(keychain: keychain)
-        let serializer = Serializer(kms: kms)
+        let serializer = Serializer(kms: kms, logger: ConsoleLogger(prefix: "🔐", loggingLevel: .off))
         let historyNetworkService = HistoryNetworkService(clientIdStorage: clientIdStorage)
         return HistoryClient(
             historyUrl: historyUrl,

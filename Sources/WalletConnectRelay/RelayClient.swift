@@ -42,17 +42,22 @@ public final class RelayClient {
 
     private let concurrentQueue = DispatchQueue(label: "com.walletconnect.sdk.relay_client", attributes: .concurrent)
 
+    public var logsPublisher: AnyPublisher<Log, Never> {
+        logger.logsPublisher
+            .eraseToAnyPublisher()
+    }
+
     // MARK: - Initialization
 
     init(
         dispatcher: Dispatching,
         logger: ConsoleLogging,
-        keyValueStorage: KeyValueStorage,
+        rpcHistory: RPCHistory,
         clientIdStorage: ClientIdStoring
     ) {
         self.logger = logger
         self.dispatcher = dispatcher
-        self.rpcHistory = RPCHistoryFactory.createForRelay(keyValueStorage: keyValueStorage)
+        self.rpcHistory = rpcHistory
         self.clientIdStorage = clientIdStorage
         setUpBindings()
     }
@@ -63,39 +68,8 @@ public final class RelayClient {
         }
     }
 
-    /// Instantiates Relay Client
-    /// - Parameters:
-    ///   - relayHost: proxy server host that your application will use to connect to Relay Network. If you register your project at `www.walletconnect.com` you can use `relay.walletconnect.com`
-    ///   - projectId: an optional parameter used to access the public WalletConnect infrastructure. Go to `www.walletconnect.com` for info.
-    ///   - keyValueStorage: by default WalletConnect SDK will store sequences in UserDefaults
-    ///   - socketConnectionType: socket connection type
-    ///   - logger: logger instance
-    public convenience init(
-        relayHost: String,
-        projectId: String,
-        keyValueStorage: KeyValueStorage = UserDefaults.standard,
-        keychainStorage: KeychainStorageProtocol = KeychainStorage(serviceIdentifier: "com.walletconnect.sdk"),
-        socketFactory: WebSocketFactory,
-        socketConnectionType: SocketConnectionType = .automatic,
-        logger: ConsoleLogging = ConsoleLogger(loggingLevel: .debug)
-    ) {
-        let clientIdStorage = ClientIdStorage(keychain: keychainStorage)
-        let socketAuthenticator = ClientIdAuthenticator(
-            clientIdStorage: clientIdStorage,
-            url: "wss://\(relayHost)"
-        )
-        let relayUrlFactory = RelayUrlFactory(
-            relayHost: relayHost,
-            projectId: projectId,
-            socketAuthenticator: socketAuthenticator
-        )
-        let dispatcher = Dispatcher(
-            socketFactory: socketFactory,
-            relayUrlFactory: relayUrlFactory,
-            socketConnectionType: socketConnectionType,
-            logger: logger
-        )
-        self.init(dispatcher: dispatcher, logger: logger, keyValueStorage: keyValueStorage, clientIdStorage: clientIdStorage)
+    public func setLogging(level: LoggingLevel) {
+        logger.setLogging(level: level)
     }
 
     /// Connects web socket
@@ -117,12 +91,12 @@ public final class RelayClient {
         let request = Publish(params: .init(topic: topic, message: payload, ttl: ttl, prompt: prompt, tag: tag))
             .asRPCRequest()
         let message = try request.asJSONEncodedString()
-        logger.debug("[RelayClient]: Publishing payload on topic: \(topic)")
+        logger.debug("Publishing payload on topic: \(topic)")
         try await dispatcher.protectedSend(message)
     }
 
     public func subscribe(topic: String) async throws {
-        logger.debug("[RelayClient]: Subscribing to topic: \(topic)")
+        logger.debug("Subscribing to topic: \(topic)")
         let rpc = Subscribe(params: .init(topic: topic))
         let request = rpc
             .asRPCRequest()
@@ -133,7 +107,7 @@ public final class RelayClient {
 
     public func batchSubscribe(topics: [String]) async throws {
         guard !topics.isEmpty else { return }
-        logger.debug("[RelayClient]: Subscribing to topics: \(topics)")
+        logger.debug("Subscribing to topics: \(topics)")
         let rpc = BatchSubscribe(params: .init(topics: topics))
         let request = rpc
             .asRPCRequest()
@@ -169,7 +143,7 @@ public final class RelayClient {
             completion(Errors.subscriptionIdNotFound)
             return
         }
-        logger.debug("[RelayClient]: Unsubscribing from topic: \(topic)")
+        logger.debug("Unsubscribing from topic: \(topic)")
         let rpc = Unsubscribe(params: .init(id: subscriptionId, topic: topic))
         let request = rpc
             .asRPCRequest()
@@ -177,7 +151,7 @@ public final class RelayClient {
         rpcHistory.deleteAll(forTopic: topic)
         dispatcher.protectedSend(message) { [weak self] error in
             if let error = error {
-                self?.logger.debug("[RelayClient]:Failed to unsubscribe from topic")
+                self?.logger.debug("Failed to unsubscribe from topic")
                 completion(error)
             } else {
                 self?.concurrentQueue.async(flags: .barrier) {
@@ -196,9 +170,9 @@ public final class RelayClient {
             .sink { [unowned self] (_, subscriptionIds) in
                 cancellable?.cancel()
                 concurrentQueue.async(flags: .barrier) { [unowned self] in
-                    logger.debug("[RelayClient]: Subscribed to topics: \(topics)")
+                    logger.debug("Subscribed to topics: \(topics)")
                     guard topics.count == subscriptionIds.count else {
-                        logger.warn("RelayClient: Number of topics in (batch)subscribe does not match number of subscriptions")
+                        logger.warn("Number of topics in (batch)subscribe does not match number of subscriptions")
                         return
                     }
                     for i in 0..<topics.count {
@@ -219,13 +193,13 @@ public final class RelayClient {
                 do {
                     try acknowledgeRequest(request)
                     try rpcHistory.set(request, forTopic: params.data.topic, emmitedBy: .remote)
-                    logger.debug("[RelayClient]: received message: \(params.data.message) on topic: \(params.data.topic)")
+                    logger.debug("received message: \(params.data.message) on topic: \(params.data.topic)")
                     messagePublisherSubject.send((params.data.topic, params.data.message, params.data.publishedAt))
                 } catch {
-                    logger.error("[RelayClient]: RPC History 'set()' error: \(error)")
+                    logger.error("RPC History 'set()' error: \(error)")
                 }
             } else {
-                logger.error("[RelayClient]: Unexpected request from network")
+                logger.error("Unexpected request from network")
             }
         } else if let response = tryDecode(RPCResponse.self, from: payload) {
             switch response.outcome {
@@ -236,10 +210,10 @@ public final class RelayClient {
                     subscriptionResponsePublisherSubject.send((response.id, subscriptionIds))
                 }
             case .error(let rpcError):
-                logger.error("[RelayClient]: Received RPC error from relay network: \(rpcError)")
+                logger.error("Received RPC error from relay network: \(rpcError)")
             }
         } else {
-            logger.error("[RelayClient]: Unexpected request/response from network")
+            logger.error("Unexpected request/response from network")
         }
     }
 
@@ -257,12 +231,12 @@ public final class RelayClient {
         let message = try response.asJSONEncodedString()
         dispatcher.protectedSend(message) { [unowned self] in
             if let error = $0 {
-                logger.debug("[RelayClient]: Failed to dispatch response: \(response), error: \(error)")
+                logger.debug("Failed to dispatch response: \(response), error: \(error)")
             } else {
                 do {
                     try rpcHistory.resolve(response)
                 } catch {
-                    logger.debug("[RelayClient]: \(error)")
+                    logger.debug("\(error)")
                 }
             }
         }

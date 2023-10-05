@@ -6,15 +6,20 @@ import Web3Wallet
 final class SessionProposalPresenter: ObservableObject {
     private let interactor: SessionProposalInteractor
     private let router: SessionProposalRouter
-    
+
+    let importAccount: ImportAccount
     let sessionProposal: Session.Proposal
-    let verified: Bool?
+    let validationStatus: VerifyContext.ValidationStatus?
+    
+    @Published var showError = false
+    @Published var errorMessage = "Error"
     
     private var disposeBag = Set<AnyCancellable>()
 
     init(
         interactor: SessionProposalInteractor,
         router: SessionProposalRouter,
+        importAccount: ImportAccount,
         proposal: Session.Proposal,
         context: VerifyContext?
     ) {
@@ -22,19 +27,30 @@ final class SessionProposalPresenter: ObservableObject {
         self.interactor = interactor
         self.router = router
         self.sessionProposal = proposal
-        self.verified = (context?.validation == .valid) ? true : (context?.validation == .unknown ? nil : false)
+        self.importAccount = importAccount
+        self.validationStatus = context?.validation
     }
     
     @MainActor
     func onApprove() async throws {
-        try await interactor.approve(proposal: sessionProposal)
-        router.dismiss()
+        do {
+            try await interactor.approve(proposal: sessionProposal, account: importAccount.account)
+            router.dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+            showError.toggle()
+        }
     }
 
     @MainActor
     func onReject() async throws {
-        try await interactor.reject(proposal: sessionProposal)
-        router.dismiss()
+        do {
+            try await interactor.reject(proposal: sessionProposal)
+            router.dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+            showError.toggle()
+        }
     }
 }
 

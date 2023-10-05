@@ -9,6 +9,7 @@ final class ApproveEngine {
         case pairingNotFound
         case sessionNotFound
         case agreementMissingOrInvalid
+        case networkNotConnected
     }
 
     var onSessionProposal: ((Session.Proposal, VerifyContext?) -> Void)?
@@ -18,8 +19,9 @@ final class ApproveEngine {
     private let networkingInteractor: NetworkInteracting
     private let pairingStore: WCPairingStorage
     private let sessionStore: WCSessionStorage
-    private let verifyClient: VerifyClient?
+    private let verifyClient: VerifyClientProtocol
     private let proposalPayloadsStore: CodableStore<RequestSubscriptionPayload<SessionType.ProposeParams>>
+    private let verifyContextStore: CodableStore<VerifyContext>
     private let sessionTopicToProposal: CodableStore<Session.Proposal>
     private let pairingRegisterer: PairingRegisterer
     private let metadata: AppMetadata
@@ -31,6 +33,7 @@ final class ApproveEngine {
     init(
         networkingInteractor: NetworkInteracting,
         proposalPayloadsStore: CodableStore<RequestSubscriptionPayload<SessionType.ProposeParams>>,
+        verifyContextStore: CodableStore<VerifyContext>,
         sessionTopicToProposal: CodableStore<Session.Proposal>,
         pairingRegisterer: PairingRegisterer,
         metadata: AppMetadata,
@@ -38,10 +41,11 @@ final class ApproveEngine {
         logger: ConsoleLogging,
         pairingStore: WCPairingStorage,
         sessionStore: WCSessionStorage,
-        verifyClient: VerifyClient?
+        verifyClient: VerifyClientProtocol
     ) {
         self.networkingInteractor = networkingInteractor
         self.proposalPayloadsStore = proposalPayloadsStore
+        self.verifyContextStore = verifyContextStore
         self.sessionTopicToProposal = sessionTopicToProposal
         self.pairingRegisterer = pairingRegisterer
         self.metadata = metadata
@@ -56,16 +60,21 @@ final class ApproveEngine {
         setupResponseErrorSubscriptions()
     }
 
-    func approveProposal(proposerPubKey: String, validating sessionNamespaces: [String: SessionNamespace]) async throws {
-
+    func approveProposal(proposerPubKey: String, validating sessionNamespaces: [String: SessionNamespace], sessionProperties: [String: String]? = nil) async throws {
         guard let payload = try proposalPayloadsStore.get(key: proposerPubKey) else {
             throw Errors.wrongRequestParams
+        }
+        
+        let networkConnectionStatus = await resolveNetworkConnectionStatus()
+        guard networkConnectionStatus == .connected else {
+            throw Errors.networkNotConnected
         }
 
         let proposal = payload.request
         let pairingTopic = payload.topic
 
         proposalPayloadsStore.delete(forKey: proposerPubKey)
+        verifyContextStore.delete(forKey: proposerPubKey)
 
         try Namespace.validate(sessionNamespaces)
         try Namespace.validateApproved(sessionNamespaces, against: proposal.requiredNamespaces)
@@ -87,9 +96,19 @@ final class ApproveEngine {
         let result = SessionType.ProposeResponse(relay: relay, responderPublicKey: selfPublicKey.hexRepresentation)
         let response = RPCResponse(id: payload.id, result: result)
 
-        async let proposeResponse: () = networkingInteractor.respond(topic: payload.topic, response: response, protocolMethod: SessionProposeProtocolMethod())
+        async let proposeResponse: () = networkingInteractor.respond(
+            topic: payload.topic,
+            response: response,
+            protocolMethod: SessionProposeProtocolMethod()
+        )
 
-        async let settleRequest: () = settle(topic: sessionTopic, proposal: proposal, namespaces: sessionNamespaces, pairingTopic: pairingTopic)
+        async let settleRequest: () = settle(
+            topic: sessionTopic,
+            proposal: proposal,
+            namespaces: sessionNamespaces,
+            sessionProperties: sessionProperties,
+            pairingTopic: pairingTopic
+        )
 
         _ = try await [proposeResponse, settleRequest]
 
@@ -104,11 +123,12 @@ final class ApproveEngine {
             throw Errors.proposalPayloadsNotFound
         }
         proposalPayloadsStore.delete(forKey: proposerPubKey)
+        verifyContextStore.delete(forKey: proposerPubKey)
         try await networkingInteractor.respondError(topic: payload.topic, requestId: payload.id, protocolMethod: SessionProposeProtocolMethod(), reason: reason)
         // TODO: Delete pairing if inactive 
     }
 
-    func settle(topic: String, proposal: SessionProposal, namespaces: [String: SessionNamespace], pairingTopic: String) async throws {
+    func settle(topic: String, proposal: SessionProposal, namespaces: [String: SessionNamespace], sessionProperties: [String: String]? = nil, pairingTopic: String) async throws {
         guard let agreementKeys = kms.getAgreementSecret(for: topic) else {
             throw Errors.agreementMissingOrInvalid
         }
@@ -129,7 +149,9 @@ final class ApproveEngine {
             relay: relay,
             controller: selfParticipant,
             namespaces: namespaces,
-            expiry: Int64(expiry))
+            sessionProperties: sessionProperties,
+            expiry: Int64(expiry)
+        )
 
         let session = WCSession(
             topic: topic,
@@ -139,7 +161,8 @@ final class ApproveEngine {
             peerParticipant: proposal.proposer,
             settleParams: settleParams,
             requiredNamespaces: proposal.requiredNamespaces,
-            acknowledged: false)
+            acknowledged: false
+        )
 
         logger.debug("Sending session settle request")
 
@@ -281,18 +304,29 @@ private extension ApproveEngine {
         }
         proposalPayloadsStore.set(payload, forKey: proposal.proposer.publicKey)
         
-        guard let verifyClient else {
-            onSessionProposal?(proposal.publicRepresentation(pairingTopic: payload.topic), nil)
+        pairingRegisterer.setReceived(pairingTopic: payload.topic)
+        
+        if let verifyContext = try? verifyContextStore.get(key: proposal.proposer.publicKey) {
+            onSessionProposal?(proposal.publicRepresentation(pairingTopic: payload.topic), verifyContext)
             return
         }
+        
         Task(priority: .high) {
             let assertionId = payload.decryptedPayload.sha256().toHexString()
-            let origin = try? await verifyClient.verifyOrigin(assertionId: assertionId)
-            let verifyContext = await verifyClient.createVerifyContext(
-                origin: origin,
-                domain: payload.request.proposer.metadata.url
-            )
-            onSessionProposal?(proposal.publicRepresentation(pairingTopic: payload.topic), verifyContext)
+            do {
+                let response = try await verifyClient.verifyOrigin(assertionId: assertionId)
+                let verifyContext = verifyClient.createVerifyContext(
+                    origin: response.origin,
+                    domain: payload.request.proposer.metadata.url,
+                    isScam: response.isScam
+                )
+                verifyContextStore.set(verifyContext, forKey: proposal.proposer.publicKey)
+                onSessionProposal?(proposal.publicRepresentation(pairingTopic: payload.topic), verifyContext)
+            } catch {
+                let verifyContext = verifyClient.createVerifyContext(origin: nil, domain: payload.request.proposer.metadata.url, isScam: nil)
+                onSessionProposal?(proposal.publicRepresentation(pairingTopic: payload.topic), verifyContext)
+                return
+            }
         }
     }
 
@@ -350,5 +384,29 @@ private extension ApproveEngine {
             try await networkingInteractor.respondSuccess(topic: payload.topic, requestId: payload.id, protocolMethod: protocolMethod)
         }
         onSessionSettle?(session.publicRepresentation())
+    }
+    
+    func resolveNetworkConnectionStatus() async -> NetworkConnectionStatus {
+        return await withCheckedContinuation { continuation in
+            let cancellable = networkingInteractor.networkConnectionStatusPublisher.sink { value in
+                continuation.resume(returning: value)
+            }
+            
+            Task(priority: .high) {
+                await withTaskCancellationHandler {
+                    cancellable.cancel()
+                } onCancel: { }
+            }
+        }
+    }
+}
+
+// MARK: - LocalizedError
+extension ApproveEngine.Errors: LocalizedError {
+    var errorDescription: String? {
+        switch self {
+        case .networkNotConnected:  return "Action failed. You seem to be offline"
+        default:                    return ""
+        }
     }
 }

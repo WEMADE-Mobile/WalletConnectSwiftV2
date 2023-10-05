@@ -3,6 +3,7 @@ import Combine
 
 public protocol NetworkInteracting {
     var socketConnectionStatusPublisher: AnyPublisher<SocketConnectionStatus, Never> { get }
+    var networkConnectionStatusPublisher: AnyPublisher<NetworkConnectionStatus, Never> { get }
     var requestPublisher: AnyPublisher<(topic: String, request: RPCRequest, decryptedPayload: Data, publishedAt: Date, derivedTopic: String?), Never> { get }
     func subscribe(topic: String) async throws
     func unsubscribe(topic: String)
@@ -12,7 +13,8 @@ public protocol NetworkInteracting {
     func respond(topic: String, response: RPCResponse, protocolMethod: ProtocolMethod, envelopeType: Envelope.EnvelopeType) async throws
     func respondSuccess(topic: String, requestId: RPCID, protocolMethod: ProtocolMethod, envelopeType: Envelope.EnvelopeType) async throws
     func respondError(topic: String, requestId: RPCID, protocolMethod: ProtocolMethod, reason: Reason, envelopeType: Envelope.EnvelopeType) async throws
-
+    func handleHistoryRequest(topic: String, request: RPCRequest)
+        
     func requestSubscription<Request: Codable>(
         on request: ProtocolMethod
     ) -> AnyPublisher<RequestSubscriptionPayload<Request>, Never>
@@ -24,6 +26,21 @@ public protocol NetworkInteracting {
     func responseErrorSubscription<Request: Codable>(
         on request: ProtocolMethod
     ) -> AnyPublisher<ResponseSubscriptionErrorPayload<Request>, Never>
+
+    func subscribeOnRequest<RequestParams: Codable>(
+        protocolMethod: ProtocolMethod,
+        requestOfType: RequestParams.Type,
+        errorHandler: ErrorHandler?,
+        subscription: @escaping (RequestSubscriptionPayload<RequestParams>) async throws -> Void
+    )
+
+    func subscribeOnResponse<Request: Codable, Response: Codable>(
+        protocolMethod: ProtocolMethod,
+        requestOfType: Request.Type,
+        responseOfType: Response.Type,
+        errorHandler: ErrorHandler?,
+        subscription: @escaping (ResponseSubscriptionPayload<Request, Response>) async throws -> Void
+    )
 
     func getClientId() throws -> String
 }

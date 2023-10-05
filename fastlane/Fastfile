@@ -103,15 +103,16 @@ platform :ios do
       project: "Example/ExampleApp.xcodeproj",
       scheme: ENV["SCHEME"],
       export_method: "app-store",
-      xcargs: "RELAY_HOST='#{options[:relay_host]}' PROJECT_ID='#{options[:project_id]}'"
+      xcargs: "RELAY_HOST='#{options[:relay_host]}' PROJECT_ID='#{options[:project_id]}' WALLETAPP_SENTRY_DSN='#{options[:sentry_dsn]}' MIXPANEL_TOKEN='#{options[:mixpanel_token]}'"
     )
     upload_to_testflight(
       apple_id: ENV["APPLE_ID"],
       app_identifier: ENV["APP_IDENTIFIER"],
-      skip_waiting_for_build_processing: true,
-      distribute_external: true,
       changelog: "#{ENV["SCHEME"]} app weekly build 🚀",
-      notify_external_testers: false,
+      distribute_external: true,
+      notify_external_testers: true,
+      skip_waiting_for_build_processing: false,
+      groups: ["WalletConnect Users"]
     )
     clean_build_artifacts()
   end

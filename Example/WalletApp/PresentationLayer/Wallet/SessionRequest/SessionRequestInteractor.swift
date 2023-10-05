@@ -2,9 +2,9 @@ import Foundation
 import Web3Wallet
 
 final class SessionRequestInteractor {
-    func approve(sessionRequest: Request) async throws {
+    func approve(sessionRequest: Request, importAccount: ImportAccount) async throws {
         do {
-            let result = try Signer.sign(request: sessionRequest)
+            let result = try Signer.sign(request: sessionRequest, importAccount: importAccount)
             try await Web3Wallet.instance.respond(
                 topic: sessionRequest.topic,
                 requestId: sessionRequest.id,
@@ -21,5 +21,9 @@ final class SessionRequestInteractor {
             requestId: sessionRequest.id,
             response: .error(.init(code: 0, message: ""))
         )
+    }
+    
+    func getSession(topic: String) -> Session? {
+        return Web3Wallet.instance.getSessions().first(where: { $0.topic == topic })
     }
 }

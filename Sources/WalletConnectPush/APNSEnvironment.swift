@@ -1,3 +1,6 @@
-import WalletConnectEcho
+import Foundation
 
-public typealias APNSEnvironment = WalletConnectEcho.APNSEnvironment
+public enum APNSEnvironment: String {
+    case production = "apns"
+    case sandbox = "apns-sandbox"
+}
