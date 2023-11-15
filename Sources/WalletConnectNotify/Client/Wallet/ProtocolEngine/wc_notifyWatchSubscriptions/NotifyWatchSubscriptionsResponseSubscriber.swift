@@ -38,36 +38,39 @@ class NotifyWatchSubscriptionsResponseSubscriber {
                 let (watchSubscriptionPayloadRequest, _) = try NotifyWatchSubscriptionsPayload.decodeAndVerify(from: payload.request)
 
                 let account = watchSubscriptionPayloadRequest.subscriptionAccount
-                // todo varify signature with notify server diddoc authentication key
+                // TODO: varify signature with notify server diddoc authentication key
 
-                let oldSubscriptions = notifyStorage.getSubscriptions()
+                let oldSubscriptions = notifyStorage.getSubscriptions(account: account)
                 let newSubscriptions = try await notifySubscriptionsBuilder.buildSubscriptions(responsePayload.subscriptions)
 
                 try Task.checkCancellation()
 
-                logger.debug("number of subscriptions: \(newSubscriptions.count)")
+                let subscriptions = oldSubscriptions.difference(from: newSubscriptions)
 
-                guard newSubscriptions != oldSubscriptions else {return}
-                // todo: unsubscribe for oldSubscriptions topics that are not included in new subscriptions
-                notifyStorage.replaceAllSubscriptions(newSubscriptions, account: account)
-                
-                for subscription in newSubscriptions {
-                    let symKey = try SymmetricKey(hex: subscription.symKey)
-                    try groupKeychainStorage.add(symKey, forKey: subscription.topic)
-                    try kms.setSymmetricKey(symKey, for: subscription.topic)
+                logger.debug("Received: \(newSubscriptions.count), changed: \(subscriptions.count)")
+
+                if subscriptions.count > 0 {
+                    // TODO: unsubscribe for oldSubscriptions topics that are not included in new subscriptions
+                    try notifyStorage.replaceAllSubscriptions(newSubscriptions)
+
+                    for subscription in newSubscriptions {
+                        let symKey = try SymmetricKey(hex: subscription.symKey)
+                        try groupKeychainStorage.add(symKey, forKey: subscription.topic)
+                        try kms.setSymmetricKey(symKey, for: subscription.topic)
+                    }
+
+                    try await networkingInteractor.batchSubscribe(topics: newSubscriptions.map { $0.topic })
+
+                    try Task.checkCancellation()
+
+                    var logProperties = [String: String]()
+                    for (index, subscription) in newSubscriptions.enumerated() {
+                        let key = "subscription_\(index + 1)"
+                        logProperties[key] = subscription.topic
+                    }
+
+                    logger.debug("Updated Subscriptions with Watch Subscriptions Update, number of subscriptions: \(newSubscriptions.count)", properties: logProperties)
                 }
-
-                try await networkingInteractor.batchSubscribe(topics: newSubscriptions.map { $0.topic })
-
-                try Task.checkCancellation()
-
-                var logProperties = [String: String]()
-                for (index, subscription) in newSubscriptions.enumerated() {
-                    let key = "subscription_\(index + 1)"
-                    logProperties[key] = subscription.topic
-                }
-
-                logger.debug("Updated Subscriptions with Watch Subscriptions Update, number of subscriptions: \(newSubscriptions.count)", properties: logProperties)
             }
     }
 

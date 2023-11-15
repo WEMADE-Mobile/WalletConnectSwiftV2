@@ -1,5 +1,6 @@
 import UIKit
 import Combine
+import WalletConnectNotify
 
 final class NotificationsPresenter: ObservableObject {
 
@@ -7,8 +8,26 @@ final class NotificationsPresenter: ObservableObject {
     private let router: NotificationsRouter
     private var disposeBag = Set<AnyCancellable>()
 
-    @Published var subscriptions: [SubscriptionsViewModel] = []
-    @Published var listings: [ListingViewModel] = []
+    @Published private var subscriptions: [NotifySubscription] = []
+    @Published private var listings: [Listing] = []
+
+    var subscriptionViewModels: [SubscriptionsViewModel] {
+        return subscriptions
+            .map { SubscriptionsViewModel(subscription: $0, messages: interactor.messages(for: $0)) }
+            .sorted(by:
+                { $0.messagesCount > $1.messagesCount },
+                { $0.name < $1.name }
+            )
+    }
+
+    var listingViewModels: [ListingViewModel] {
+        return listings
+            .map { ListingViewModel(listing: $0) }
+            .sorted(by: 
+                { subscription(forListing: $0) != nil && subscription(forListing: $1) == nil },
+                { $0.title < $1.title }
+            )
+    }
 
     init(interactor: NotificationsInteractor, router: NotificationsRouter) {
         defer { setupInitialState() }
@@ -19,11 +38,11 @@ final class NotificationsPresenter: ObservableObject {
 
     @MainActor
     func fetch() async throws {
-        self.listings = try await interactor.getListings().map { ListingViewModel(listing: $0) }
+        listings = try await interactor.getListings()
     }
 
     func subscription(forListing listing: ListingViewModel) -> SubscriptionsViewModel? {
-        return subscriptions.first(where: { $0.domain == listing.appDomain })
+        return subscriptionViewModels.first(where: { $0.domain == listing.appDomain })
     }
 
     func subscribe(listing: ListingViewModel) async throws {
@@ -50,7 +69,7 @@ final class NotificationsPresenter: ObservableObject {
 
     func removeSubscribtion(at indexSet: IndexSet) async {
         if let index = indexSet.first {
-            await interactor.removeSubscription(subscriptions[index].subscription)
+            await interactor.removeSubscription(subscriptionViewModels[index].subscription)
         }
     }
 }
@@ -72,13 +91,12 @@ extension NotificationsPresenter: SceneViewModel {
 private extension NotificationsPresenter {
 
     func setupSubscriptions() {
-        self.subscriptions = interactor.getSubscriptions().map { SubscriptionsViewModel(subscription: $0) }
+        self.subscriptions = interactor.getSubscriptions()
 
         interactor.subscriptionsPublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] notifySubscriptions in
                 self?.subscriptions = notifySubscriptions
-                    .map { SubscriptionsViewModel(subscription: $0) }
             }
             .store(in: &disposeBag)
     }

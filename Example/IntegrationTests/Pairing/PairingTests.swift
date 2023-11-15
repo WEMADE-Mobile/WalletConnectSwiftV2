@@ -63,7 +63,7 @@ final class PairingTests: XCTestCase {
         appPairingClient = pairingClient
         
         appAuthClient = AuthClientFactory.create(
-            metadata: AppMetadata(name: name, description: "", url: "", icons: [""]),
+            metadata: AppMetadata(name: name, description: "", url: "", icons: [""], redirect: AppMetadata.Redirect(native: "wcdapp://", universal: nil)),
             projectId: InputConfig.projectId,
             crypto: DefaultCryptoProvider(),
             logger: notifyLogger,
@@ -78,14 +78,17 @@ final class PairingTests: XCTestCase {
         let prefix = "🐶 Wallet: "
         let (pairingClient, networkingInteractor, keychain, keyValueStorage) = makeClientDependencies(prefix: prefix)
         let notifyLogger = ConsoleLogger(prefix: prefix + " [Notify]", loggingLevel: .debug)
+        let defaults = RuntimeKeyValueStorage()
         walletPairingClient = pairingClient
         let historyClient = HistoryClientFactory.create(
             historyUrl: "https://history.walletconnect.com",
             relayUrl: "wss://relay.walletconnect.com",
-            keychain: keychain
+            keyValueStorage: defaults,
+            keychain: keychain,
+            logger: notifyLogger
         )
         appAuthClient = AuthClientFactory.create(
-            metadata: AppMetadata(name: name, description: "", url: "", icons: [""]),
+            metadata: AppMetadata(name: name, description: "", url: "", icons: [""], redirect: AppMetadata.Redirect(native: "", universal: nil)),
             projectId: InputConfig.projectId,
             crypto: DefaultCryptoProvider(),
             logger: notifyLogger,

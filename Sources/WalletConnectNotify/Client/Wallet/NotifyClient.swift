@@ -9,8 +9,8 @@ public class NotifyClient {
         return notifyStorage.subscriptionsPublisher
     }
 
-    public var notifyMessagePublisher: AnyPublisher<NotifyMessageRecord, Never> {
-        return notifyMessageSubscriber.notifyMessagePublisher
+    public var messagesPublisher: AnyPublisher<[NotifyMessageRecord], Never> {
+        return notifyStorage.messagesPublisher
     }
 
     public var logsPublisher: AnyPublisher<Log, Never> {
@@ -25,6 +25,7 @@ public class NotifyClient {
     private let pushClient: PushClient
     private let identityService: NotifyIdentityService
     private let notifyStorage: NotifyStorage
+    private let notifyAccountProvider: NotifyAccountProvider
     private let notifyMessageSubscriber: NotifyMessageSubscriber
     private let resubscribeService: NotifyResubscribeService
     private let notifySubscribeResponseSubscriber: NotifySubscribeResponseSubscriber
@@ -32,6 +33,7 @@ public class NotifyClient {
     private let notifyUpdateResponseSubscriber: NotifyUpdateResponseSubscriber
     private let subscriptionsAutoUpdater: SubscriptionsAutoUpdater
     private let notifyWatchSubscriptionsResponseSubscriber: NotifyWatchSubscriptionsResponseSubscriber
+    private let notifyWatcherAgreementKeysProvider: NotifyWatcherAgreementKeysProvider
     private let notifySubscriptionsChangedRequestSubscriber: NotifySubscriptionsChangedRequestSubscriber
     private let subscriptionWatcher: SubscriptionWatcher
 
@@ -47,8 +49,10 @@ public class NotifyClient {
          notifySubscribeResponseSubscriber: NotifySubscribeResponseSubscriber,
          notifyUpdateRequester: NotifyUpdateRequester,
          notifyUpdateResponseSubscriber: NotifyUpdateResponseSubscriber,
+         notifyAccountProvider: NotifyAccountProvider,
          subscriptionsAutoUpdater: SubscriptionsAutoUpdater,
          notifyWatchSubscriptionsResponseSubscriber: NotifyWatchSubscriptionsResponseSubscriber,
+         notifyWatcherAgreementKeysProvider: NotifyWatcherAgreementKeysProvider,
          notifySubscriptionsChangedRequestSubscriber: NotifySubscriptionsChangedRequestSubscriber,
          subscriptionWatcher: SubscriptionWatcher
     ) {
@@ -63,15 +67,26 @@ public class NotifyClient {
         self.notifySubscribeResponseSubscriber = notifySubscribeResponseSubscriber
         self.notifyUpdateRequester = notifyUpdateRequester
         self.notifyUpdateResponseSubscriber = notifyUpdateResponseSubscriber
+        self.notifyAccountProvider = notifyAccountProvider
         self.subscriptionsAutoUpdater = subscriptionsAutoUpdater
         self.notifyWatchSubscriptionsResponseSubscriber = notifyWatchSubscriptionsResponseSubscriber
+        self.notifyWatcherAgreementKeysProvider = notifyWatcherAgreementKeysProvider
         self.notifySubscriptionsChangedRequestSubscriber = notifySubscriptionsChangedRequestSubscriber
         self.subscriptionWatcher = subscriptionWatcher
     }
 
     public func register(account: Account, domain: String, isLimited: Bool = false, onSign: @escaping SigningCallback) async throws {
         try await identityService.register(account: account, domain: domain, isLimited: isLimited, onSign: onSign)
-        subscriptionWatcher.setAccount(account)
+        notifyAccountProvider.setAccount(account)
+        try await subscriptionWatcher.start()
+    }
+
+    public func unregister(account: Account) async throws {
+        try await identityService.unregister(account: account)
+        notifyWatcherAgreementKeysProvider.removeAgreement(account: account)
+        try notifyStorage.clearDatabase(account: account)
+        notifyAccountProvider.logout()
+        subscriptionWatcher.stop()
     }
 
     public func setLogging(level: LoggingLevel) {
@@ -79,32 +94,15 @@ public class NotifyClient {
     }
 
     public func subscribe(appDomain: String, account: Account) async throws {
-        return try await withCheckedThrowingContinuation { continuation in
-
-            var cancellable: AnyCancellable?
-            cancellable = subscriptionsPublisher.sink { subscriptions in
-                guard subscriptions.contains(where: { $0.metadata.url == appDomain }) else { return }
-                cancellable?.cancel()
-                continuation.resume(with: .success(()))
-            }
-
-            Task { [cancellable] in
-                do {
-                    try await notifySubscribeRequester.subscribe(appDomain: appDomain, account: account)
-                } catch {
-                    cancellable?.cancel()
-                    continuation.resume(throwing: error)
-                }
-            }
-        }
+        try await notifySubscribeRequester.subscribe(appDomain: appDomain, account: account)
     }
 
     public func update(topic: String, scope: Set<String>) async throws {
         try await notifyUpdateRequester.update(topic: topic, scope: scope)
     }
 
-    public func getActiveSubscriptions() -> [NotifySubscription] {
-        return notifyStorage.getSubscriptions()
+    public func getActiveSubscriptions(account: Account) -> [NotifySubscription] {
+        return notifyStorage.getSubscriptions(account: account)
     }
 
     public func getMessageHistory(topic: String) -> [NotifyMessageRecord] {
@@ -116,7 +114,7 @@ public class NotifyClient {
     }
 
     public func deleteNotifyMessage(id: String) {
-        notifyStorage.deleteMessage(id: id)
+        try? notifyStorage.deleteMessage(id: id)
     }
 
     public func register(deviceToken: Data) async throws {
@@ -127,6 +125,10 @@ public class NotifyClient {
         return identityService.isIdentityRegistered(account: account)
     }
 
+    public func subscriptionsPublisher(account: Account) -> AnyPublisher<[NotifySubscription], Never> {
+        return notifyStorage.subscriptionsPublisher(account: account)
+    }
+
     public func messagesPublisher(topic: String) -> AnyPublisher<[NotifyMessageRecord], Never> {
         return notifyStorage.messagesPublisher(topic: topic)
     }
@@ -134,6 +136,11 @@ public class NotifyClient {
 
 #if targetEnvironment(simulator)
 extension NotifyClient {
+
+    public var subscriptionChangedPublisher: AnyPublisher<[NotifySubscription], Never> {
+        return notifySubscriptionsChangedRequestSubscriber.subscriptionChangedPublisher
+    }
+
     public func register(deviceToken: String) async throws {
         try await pushClient.register(deviceToken: deviceToken)
     }

@@ -15,11 +15,12 @@ final class SessionRequestPresenter: ObservableObject {
     var message: String {
         let message = try? sessionRequest.params.get([String].self)
         let decryptedMessage = message.map { String(data: Data(hex: $0.first ?? ""), encoding: .utf8) }
-        return (decryptedMessage ?? "Failed to decrypt") ?? "Failed to decrypt"
+        return (decryptedMessage ?? String(describing: sessionRequest.params.value)) ?? String(describing: sessionRequest.params.value)
     }
     
     @Published var showError = false
     @Published var errorMessage = "Error"
+    @Published var showSignedSheet = false
     
     private var disposeBag = Set<AnyCancellable>()
 
@@ -42,8 +43,8 @@ final class SessionRequestPresenter: ObservableObject {
     @MainActor
     func onApprove() async throws {
         do {
-            try await interactor.approve(sessionRequest: sessionRequest, importAccount: importAccount)
-            router.dismiss()
+            let showConnected = try await interactor.approve(sessionRequest: sessionRequest, importAccount: importAccount)
+            showConnected ? showSignedSheet.toggle() : router.dismiss()
         } catch {
             errorMessage = error.localizedDescription
             showError.toggle()
@@ -53,6 +54,10 @@ final class SessionRequestPresenter: ObservableObject {
     @MainActor
     func onReject() async throws {
         try await interactor.reject(sessionRequest: sessionRequest)
+        router.dismiss()
+    }
+    
+    func onSignedSheetDismiss() {
         router.dismiss()
     }
 }

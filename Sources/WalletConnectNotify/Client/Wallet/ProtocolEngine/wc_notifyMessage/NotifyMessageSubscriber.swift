@@ -8,11 +8,6 @@ class NotifyMessageSubscriber {
     private let notifyStorage: NotifyStorage
     private let crypto: CryptoProvider
     private let logger: ConsoleLogging
-    private let notifyMessagePublisherSubject = PassthroughSubject<NotifyMessageRecord, Never>()
-
-    public var notifyMessagePublisher: AnyPublisher<NotifyMessageRecord, Never> {
-        notifyMessagePublisherSubject.eraseToAnyPublisher()
-    }
 
     init(keyserver: URL, networkingInteractor: NetworkInteracting, identityClient: IdentityClient, notifyStorage: NotifyStorage, crypto: CryptoProvider, logger: ConsoleLogging) {
         self.keyserver = keyserver
@@ -38,8 +33,7 @@ class NotifyMessageSubscriber {
 
             let dappPubKey = try DIDKey(did: claims.iss)
             let record = NotifyMessageRecord(id: payload.id.string, topic: payload.topic, message: messagePayload.message, publishedAt: payload.publishedAt)
-            notifyStorage.setMessage(record)
-            notifyMessagePublisherSubject.send(record)
+            try notifyStorage.setMessage(record)
 
             let receiptPayload = NotifyMessageReceiptPayload(
                 account: messagePayload.account,
