@@ -29,40 +29,40 @@ actor PushRegisterService {
         self.environment = environment
     }
 
-    func register(deviceToken: Data) async throws {
-        let tokenParts = deviceToken.map { data in String(format: "%02.2hhx", data) }
-        let token = tokenParts.joined()
-        let pushAuthToken = try pushAuthenticator.createAuthToken()
-        let clientId = try clientIdStorage.getClientId()
-        let clientIdMutlibase = try DIDKey(did: clientId).multibase(variant: .ED25519)
-        logger.debug("APNS device token: \(token)")
-        
-        do {
-            let response = try await httpClient.request(
-                PushResponse.self,
-                at: PushAPI.register(clientId: clientIdMutlibase, token: token, projectId: projectId, environment: environment, auth: pushAuthToken)
-            )
-            guard response.status == .success else {
-                throw Errors.registrationFailed
-            }
-            logger.debug("Successfully registered at Push Server")
-        } catch {
-            if (error as? HTTPError) == .couldNotConnect && !fallback {
-                logger.debug("Trying fallback")
-                fallback = true
-                await echoHostFallback()
-                try await register(deviceToken: deviceToken)
-            }
-            logger.debug("Push Server registration error: \(error.localizedDescription)")
-            throw error
-        }
-    }
-    
+//    func register(deviceToken: Data) async throws {
+//        let tokenParts = deviceToken.map { data in String(format: "%02.2hhx", data) }
+//        let token = tokenParts.joined()
+//        let pushAuthToken = try pushAuthenticator.createAuthToken()
+//        let clientId = try clientIdStorage.getClientId()
+//        let clientIdMutlibase = try DIDKey(did: clientId).multibase(variant: .ED25519)
+//        logger.debug("APNS device token: \(token)")
+//        
+//        do {
+//            let response = try await httpClient.request(
+//                PushResponse.self,
+//                at: PushAPI.register(clientId: clientIdMutlibase, token: token, projectId: projectId, environment: environment, auth: pushAuthToken)
+//            )
+//            guard response.status == .success else {
+//                throw Errors.registrationFailed
+//            }
+//            logger.debug("Successfully registered at Push Server")
+//        } catch {
+//            if (error as? HTTPError) == .couldNotConnect && !fallback {
+//                logger.debug("Trying fallback")
+//                fallback = true
+//                await echoHostFallback()
+//                try await register(deviceToken: deviceToken)
+//            }
+//            logger.debug("Push Server registration error: \(error.localizedDescription)")
+//            throw error
+//        }
+//    }
+//    
     func echoHostFallback() async {
         await httpClient.updateHost(host: "echo.walletconnect.org")
     }
 
-#if DEBUG
+//#if DEBUG
     public func register(deviceToken: String) async throws {
         let pushAuthToken = try pushAuthenticator.createAuthToken()
         let clientId = try clientIdStorage.getClientId()
@@ -86,6 +86,6 @@ actor PushRegisterService {
             throw error
         }
     }
-#endif
+//#endif
 }
 

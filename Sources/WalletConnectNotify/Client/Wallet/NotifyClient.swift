@@ -117,9 +117,9 @@ public class NotifyClient {
         try? notifyStorage.deleteMessage(id: id)
     }
 
-    public func register(deviceToken: Data) async throws {
-        try await pushClient.register(deviceToken: deviceToken)
-    }
+//    public func register(deviceToken: Data) async throws {
+//        try await pushClient.register(deviceToken: deviceToken)
+//    }
 
     public func isIdentityRegistered(account: Account) -> Bool {
         return identityService.isIdentityRegistered(account: account)
