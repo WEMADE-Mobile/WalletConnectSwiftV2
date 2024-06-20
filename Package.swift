@@ -49,6 +49,9 @@ let package = Package(
         .library(
             name: "WalletConnectModal",
             targets: ["WalletConnectModal"]),
+        .library(
+            name: "WalletConnectSign",
+            targets: ["WalletConnectSign"]),
 
     ],
     dependencies: [
